@@ -12,7 +12,7 @@
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static void *fun (void *p)
+static void *fun(void *p)
 {
     int fd = -1;
     long long n = 0;
@@ -36,22 +36,25 @@ static void *fun (void *p)
     pthread_exit(NULL);
 }
 
-int main (int argc, char **argv)
+int main(int argc, char **argv)
 {
     pthread_t tids[20];
     int i = 0;
 
-    if (argc < 2) {
+    if (argc < 2)
+    {
         fprintf(stderr, "Usage %s <filename>\n", argv[0]);
         return -1;
     }
 
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < 20; i++)
+    {
         pthread_create(&tids[i], NULL, fun, argv[1]);
         /* if err */
     }
 
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < 20; i++)
+    {
         pthread_join(tids[i], NULL);
     }
 
