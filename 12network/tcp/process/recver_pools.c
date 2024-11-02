@@ -73,7 +73,7 @@ int main()
 	}
 	// 只有父进程会执行这段代码，等待所有子进程
 	for (int i = 0; i < PROCNUM; i++)
-		wait();
+		wait(NULL);
 	// 关闭监听套接字
 	close(sd);
 	return 0;
@@ -87,7 +87,7 @@ static void server_loop(int sd)
 	char ipstr[IPSTRSIZE];
 
 	/* !!!! */
-	raddr_len = sizeof(raddr);
+	// raddr_len = sizeof(raddr);
 
 	while (1)
 	{
