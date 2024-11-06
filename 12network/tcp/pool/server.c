@@ -1,3 +1,4 @@
+// 这是一个实现基于进程池的 TCP 服务器的 C 代码，目的是管理多个工作进程来处理客户端连接。每个工作进程负责与一个客户端进行通信，并且进程池根据负载动态调整工作进程的数量。
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -14,7 +15,7 @@
 
 #include "proto.h"
 
-#define SIG_NOTIFY SIGUSR2
+#define SIG_NOTIFY SIGUSR2 // 定义了一个信号 SIGUSR2，用来通知父进程工作进程的状态。
 
 #define MINSPACESERVER 5
 #define MAXSPACESERVER 10
@@ -26,13 +27,13 @@
 enum
 {
     STATE_IDLE = 0, // idle 空闲的
-    STATE_BUSY
+    STATE_BUSY      // 忙态
 };
 
 struct server_st
 {
-    pid_t pid;
-    int state;
+    pid_t pid; // 进程id
+    int state; // 进程状态
 };
 
 static struct server_st *serverpool;
@@ -40,7 +41,7 @@ static int idle_count = 0, busy_count = 0;
 
 // socket相关全局变量
 static int sfd;
-
+// 是一个空的信号处理函数，用于处理 SIG_NOTIFY 信号
 static void handle(int sig)
 {
     return;
@@ -61,7 +62,7 @@ static void server_job(int pos)
     while (1)
     {
         serverpool[pos].state = STATE_IDLE;
-        kill(ppid, SIG_NOTIFY);
+        kill(ppid, SIG_NOTIFY); // 通知父进程该进程空闲
 
         newsd = accept(sfd, (void *)&raddr, &raddr_len); // 接收客户端连接
         if (newsd < 0)
@@ -75,10 +76,10 @@ static void server_job(int pos)
             }
         }
 
-        serverpool[pos].state = STATE_BUSY;
-        kill(ppid, SIG_NOTIFY);
-        inet_ntop(AF_INET, &raddr.sin_addr, ip, IPSIZE);
-
+        serverpool[pos].state = STATE_BUSY;              // 处理客户端请求，更新为忙碌状态
+        kill(ppid, SIG_NOTIFY);                          // 通知父进程该进程忙碌
+        inet_ntop(AF_INET, &raddr.sin_addr, ip, IPSIZE); // 获取客户端 IP
+        // 向客户端发送时间戳
         char buf[BUFSIZE];
         int pkglen = 0;
 
@@ -89,11 +90,13 @@ static void server_job(int pos)
             perror("send()");
             exit(1);
         }
+        // 关闭客户端连接
         close(newsd);
+        // 每处理一个连接后休眠 5 秒
         sleep(5);
     }
 }
-
+// 负责向进程池中添加一个新的工作进程。如果当前进程池已经满了，则返回失败。
 static int add_one_server()
 {
     int slot;
@@ -101,32 +104,34 @@ static int add_one_server()
 
     if (idle_count + busy_count >= MAXCLINETS)
     {
-        return -1;
+        return -1; // 如果已经达到最大客户端数，不能再添加
     }
 
     for (slot = 0; slot < MAXCLINETS; slot++)
     {
-        if (serverpool[slot].pid == -1)
+        if (serverpool[slot].pid == -1) // 找到一个空闲槽
         {
             break;
         }
     }
     serverpool[slot].state = STATE_IDLE;
-    pid = fork();
+    pid = fork(); // 创建子进程
     if (pid < 0)
     {
         perror("fork");
         exit(1);
     }
+    // 子进程
     if (pid == 0)
     {
-        server_job(slot);
+        server_job(slot); // 子进程执行工作
         exit(0);
     }
+    // 父进程
     else
     {
-        serverpool[slot].pid = pid;
-        idle_count++;
+        serverpool[slot].pid = pid; // 父进程记录子进程 PID
+        idle_count++;               // 空闲进程数加 1
     }
     return 0;
 }
@@ -136,16 +141,16 @@ static int del_one_server()
     int slot;
     if (idle_count == 0)
     {
-        return -1;
+        return -1; // 如果没有空闲的进程，不能删除
     }
 
     for (slot = 0; slot < MAXCLINETS; slot++)
     {
         if (serverpool[slot].pid != -1 && serverpool[slot].state == STATE_IDLE)
         {
-            kill(serverpool[slot].pid, SIGTERM);
-            serverpool[slot].pid = -1;
-            idle_count--;
+            kill(serverpool[slot].pid, SIGTERM); // 发送信号终止空闲进程
+            serverpool[slot].pid = -1;           // 释放该槽
+            idle_count--;                        // 空闲进程数减 1
             break;
         }
     }
@@ -161,9 +166,9 @@ static void scan_pool()
         {
             continue;
         }
-        if (kill(serverpool[i].pid, 0))
-        { // kill pid 0检测一个进程是否存在
-            serverpool[i].pid = -1;
+        if (kill(serverpool[i].pid, 0)) // 检查进程是否存活
+        {
+            serverpool[i].pid = -1; // 进程已退出，清理
             continue;
         }
         // 统计进程池的状态
@@ -201,6 +206,7 @@ int main()
     sigaddset(&sigset, SIG_NOTIFY);
     sigprocmask(SIG_BLOCK, &sigset, &oldsigset);
 
+    // 共享内存地址映射
     serverpool = mmap(NULL, sizeof(struct server_st) * MAXCLINETS, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (serverpool == MAP_FAILED)
     {
@@ -221,6 +227,7 @@ int main()
         exit(1);
     }
 
+    // 对指定Socket sd 的SOL_SOCKET层面 的 SO_REUSEADDR属性进行设置，即打开该属性，如果发现 端口没有释放，该属性会马上释放该端口，并且让我们绑定成功。
     int val = 1;
     if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)) < 0)
     {
@@ -244,9 +251,10 @@ int main()
         perror("listen()");
         exit(1);
     }
-
+    // 如果进程数量少于最小进程数添加一个socket接收进程
     for (int i = 0; i < MINSPACESERVER; i++)
     {
+
         add_one_server();
     }
 
@@ -266,7 +274,6 @@ int main()
         }
         else if (idle_count < MINSPACESERVER)
         {
-            printf("削减server\n");
             for (int i = 0; i < (MINSPACESERVER - idle_count); i++)
             {
                 add_one_server();
