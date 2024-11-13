@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/epoll.h>
+#include <poll.h>
 
 #define BUFSIZE 1024
 #define TTY1 "/dev/tty11"
@@ -109,15 +109,7 @@ static void relay(int fd1, int fd2)
 {
     int fd1_save, fd2_save;
     struct fsm_st fsm12, fsm21;
-    int epfd;
-    struct epoll_event ev;
-
-    epfd = epoll_create(10);
-    if (epfd < 0)
-    {
-        perror("epfd()");
-        exit(1);
-    }
+    struct pollfd pfd[2]; // 一共监视两个文件描述符
 
     fd1_save = fcntl(fd1, F_GETFL);
     fcntl(fd1, F_SETFL, fd1_save | O_NONBLOCK);
@@ -132,61 +124,50 @@ static void relay(int fd1, int fd2)
     fsm21.sfd = fd2;
     fsm21.dfd = fd1;
 
-    ev.events = 0;
-    ev.data.fd = fd1;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, fd1, &ev);
-
-    ev.events = 0;
-    ev.data.fd = fd2;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, fd2, &ev);
+    pfd[0].fd = fd1;
+    pfd[1].fd = fd2;
 
     while (fsm12.state != STATE_T || fsm21.state != STATE_T)
     {
         // 布置监视任务
-
-        ev.events = 0;
-        ev.data.fd = fd1;
+        pfd[0].events = 0;
         if (fsm12.state == STATE_R)
-            ev.events |= EPOLLIN;
+            pfd[0].events |= POLLIN; // 第一个文件描述符可读
         if (fsm21.state == STATE_W)
-            ev.events |= EPOLLOUT;
-        epoll_ctl(epfd, EPOLL_CTL_MOD, fd1, &ev);
+            pfd[0].events |= POLLOUT; // 第一个文件描述符可写
 
-        ev.events = 0;
-        ev.data.fd = fd2;
+        pfd[1].events = 0;
         if (fsm12.state == STATE_W)
-            ev.events |= EPOLLOUT;
+            pfd[1].events |= POLLOUT; // 第二个文件描述符可读
         if (fsm21.state == STATE_R)
-            ev.events |= EPOLLIN;
-        epoll_ctl(epfd, EPOLL_CTL_MOD, fd2, &ev);
+            pfd[1].events |= POLLIN; // 第二个文件描述符可写
 
-        // 监视
+        // 只要是可读写状态就进行监视
         if (fsm12.state < STATE_AUTO || fsm21.state < STATE_AUTO)
         {
-            while (epoll_wait(epfd, &ev, 1, -1) < 0)
+            // 阻塞监视
+            while (poll(pfd, 2, -1) < 0)
             {
                 if (errno == EINTR)
                     continue;
-                perror("epoll_wait()");
+                perror("poll()");
                 exit(1);
             }
         }
 
         // 查看监视结果
-        if (ev.data.fd == fd1 && ev.events & EPOLLIN ||
-            ev.data.fd == fd2 && ev.events & EPOLLOUT ||
+        if (pfd[0].revents & POLLIN ||
+            pfd[1].revents & POLLOUT ||
             fsm12.state > STATE_AUTO)
-            fsm_driver(&fsm12);
-        if (ev.data.fd == fd2 && ev.events & EPOLLIN ||
-            ev.data.fd == fd1 && ev.events & EPOLLOUT ||
+            fsm_driver(&fsm12); // 推状态机
+        if (pfd[1].revents & POLLIN ||
+            pfd[0].revents & POLLOUT ||
             fsm21.state > STATE_AUTO)
-            fsm_driver(&fsm21);
+            fsm_driver(&fsm21); // 推状态机
     }
 
     fcntl(fd1, F_SETFL, fd1_save);
     fcntl(fd2, F_SETFL, fd2_save);
-
-    close(epfd);
 }
 
 int main()

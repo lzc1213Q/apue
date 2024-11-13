@@ -6,12 +6,14 @@
 
 #define THRNUM 4
 static pthread_mutex_t mut[THRNUM];
+// 循环abcde
 static int next(int a)
 {
     if (a + 1 == THRNUM)
         return 0;
     return a + 1;
 }
+
 static void *thr_func(void *p)
 {
     int n = (int)p;
@@ -19,6 +21,7 @@ static void *thr_func(void *p)
 
     while (1)
     {
+        
         pthread_mutex_lock(mut + n);
         write(1, &ch, 1);
         pthread_mutex_unlock(mut + next(n));
@@ -40,10 +43,14 @@ int main()
             exit(1);
         }
     }
-    pthread_mutex_unlock(mut + 0);
+    pthread_mutex_unlock(mut);
     alarm(5);
     for (i = 0; i < THRNUM; i++)
     {
         pthread_join(tid[1], NULL);
+    }
+    for (i = 0; i < THRNUM; i++)
+    {
+        pthread_mutex_destroy(mut + i);
     }
 }

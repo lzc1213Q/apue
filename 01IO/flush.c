@@ -10,6 +10,7 @@ int main()
 
     int i;
     printf("Berfor while()");
+    // 刷新标准输出流
     fflush(stdout);
 
     while(1);

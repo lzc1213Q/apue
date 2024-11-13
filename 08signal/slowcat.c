@@ -39,16 +39,16 @@ int main(int argc, char **argv)
 
     while (1)
     {
-        while (!loop)
-            pause();
-        loop = 0;
+        while (!loop) // 等待 signal 触发，设置 loop 为 1
+            pause();  // 暂停进程，直到信号发生
+        loop = 0;     // 重置 loop 为 0，避免下一次读数据
         len = read(sfd, buf, BUFSIZE);
         if (len < 0)
         {
             perror("read()");
             break;
         }
-        if (len == 0)
+        if (len == 0) // 文件结束
             break;
         pos = 0;
         while (len > 0)

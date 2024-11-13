@@ -11,15 +11,16 @@ int main()
 {
     time_t end;
     int64_t count = 0;
+    // 定时为5s闹钟
     alarm(5);
+
     signal(SIGALRM, alarm_handler);
-    end = time(NULL)+5;
+    end = time(NULL) + 5;
+    // 5s时间内count疯狂自加
+    while (loop)
+        count++;
 
-    while(loop)
-    count ++;
+    printf("%lld \n", count);
 
-    printf("%lld \n",count);
-    
     exit(0);
-
-} 
+}
